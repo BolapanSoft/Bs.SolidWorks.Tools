@@ -78,15 +78,20 @@ namespace Bs.SolidWorks.Tools.Commands {
 
                 IConfigurationManager configMgr = swModel.ConfigurationManager;
                 int count = 0;
-                ScalePreference? scalePreference = null;
+                ScalePreference? scalePreference = new ScalePreference() {
+                    ScaleDecimal = 1.0,
+                    UseParentScale = true,
+                    UseSheetScale = 0
+                };
+                ;
 
                 string dwgPath = Path.Combine(baseFolder, $"{baseName}.dwg");
                 string drawingTemplate = GetDrawingTemplatePath();
                 IModelDoc2 drawModel = swApp.INewDocument2(drawingTemplate, PaperSize, 0.0, 0.0);
                 IDrawingDoc swDraw = (DrawingDoc)drawModel;
-                double xBase = 0, yBase = 0, xRight = 0, xLeft = 0, xBack = 0, yTop = 0, yBottom = 0;
+                double xBase = 0, yBase = 0, xRight = 0, xLeft = 0, xBack = 0, yTop = 0, yBottom = 0, yIsometric;
 
-                BoundingBox boundingFront, boundingBack, boundingRight, boundingLeft, boundingTop, boundingBottom, boundingConfig;
+                BoundingBox boundingFront, boundingBack, boundingRight, boundingLeft, boundingTop, boundingBottom, boundingConfig, boundingIsometric;
 
                 foreach (var name in configNameArr) {
                     string configName = (string)name;
@@ -108,26 +113,26 @@ namespace Bs.SolidWorks.Tools.Commands {
                     swDraw.ActivateSheet("Sheet1");
                     var swSheet = swDraw.GetCurrentSheet() as Sheet;
                     {
-                        IView viewFront, viewBack, viewRight, viewLeft, viewTop, viewBottom;
+                        IView viewFront, viewBack, viewRight, viewLeft, viewTop, viewBottom, viewIsometric;
                         // Create isometric drawing view 
                         {
                             IView view = swDraw.CreateDrawViewFromModelView3(swModel.GetPathName(), "*Front", 0, 0, 0);
                             views.Add(view);
                             viewFront = view;
-                            if (!scalePreference.HasValue) {
-                                scalePreference = new ScalePreference() {
-                                    ScaleDecimal = view.ScaleDecimal,
-                                    UseParentScale = view.UseParentScale,
-                                    UseSheetScale = view.UseSheetScale
-                                };
-                                logger.Info($"Captured scale preference from base view: ScaleDecimal={scalePreference.Value.ScaleDecimal}, UseParentScale={scalePreference.Value.UseParentScale}, UseSheetScale={scalePreference.Value.UseSheetScale}");
-                            }
-                            else {
-                                // Apply captured scale preference to base view
-                                view.ScaleDecimal = scalePreference.Value.ScaleDecimal;
-                                view.UseParentScale = scalePreference.Value.UseParentScale;
-                                view.UseSheetScale = scalePreference.Value.UseSheetScale;
-                            }
+                            //if (!scalePreference.HasValue) {
+                            //    scalePreference = new ScalePreference() {
+                            //        ScaleDecimal = view.ScaleDecimal,
+                            //        UseParentScale = view.UseParentScale,
+                            //        UseSheetScale = view.UseSheetScale
+                            //    };
+                            //    logger.Info($"Captured scale preference from base view: ScaleDecimal={scalePreference.Value.ScaleDecimal}, UseParentScale={scalePreference.Value.UseParentScale}, UseSheetScale={scalePreference.Value.UseSheetScale}");
+                            //}
+                            //else {
+                            //    // Apply captured scale preference to base view
+                            //}
+                            view.ScaleDecimal = scalePreference.Value.ScaleDecimal;
+                            view.UseParentScale = scalePreference.Value.UseParentScale;
+                            view.UseSheetScale = scalePreference.Value.UseSheetScale;
                             boundingFront = new BoundingBox(view.GetOutline() as double[]);
                         }
                         {
@@ -185,27 +190,28 @@ namespace Bs.SolidWorks.Tools.Commands {
                             boundingBack = new BoundingBox(view.GetOutline() as double[]);
                             xBack = boundingFront.Xmax + 2 * dX + (boundingLeft.Xmax - boundingLeft.Xmin) - boundingBack.Xmin;
                         }
-                        boundingConfig = new(boundingFront.Xmin - dX - (boundingRight.Xmax - boundingRight.Xmin),
-                                              boundingFront.Ymin - dY - (boundingTop.Ymax - boundingTop.Ymin),
-                                              boundingFront.Xmax + dX + (boundingLeft.Xmax - boundingLeft.Xmin) + (dX + boundingBack.Xmax - boundingBack.Xmin),
-                                              boundingFront.Ymax + dY + (boundingBottom.Ymax - boundingBottom.Ymin));
-                        double shiftY = -boundingConfig.Ymin + dY;
                         {
                             IView view = swDraw.CreateDrawViewFromModelView3(swModel.GetPathName(), "*Isometric", 0, 0, 0);
+                            views.Add(view);
+                            viewIsometric = view;
                             view.ScaleDecimal = scalePreference.Value.ScaleDecimal;
                             view.UseParentScale = scalePreference.Value.UseParentScale;
                             view.UseSheetScale = scalePreference.Value.UseSheetScale;
-                            var bounding = new BoundingBox(view.GetOutline() as double[]);
-                            view.Position = new double[] {
-                                xBase+boundingBottom.Xmax+dX-bounding.Xmin,
-                                yBase+shiftY + (boundingLeft.Ymax +dY) - bounding.Ymin };
+                            boundingIsometric = new BoundingBox(view.GetOutline() as double[]);
+                            yIsometric = boundingFront.Ymax + dY - boundingIsometric.Ymin;
                         }
+                        boundingConfig = new(boundingFront.Xmin - dX - (boundingRight.Xmax - boundingRight.Xmin),
+                                              boundingFront.Ymin - dY - (boundingTop.Ymax - boundingTop.Ymin),
+                                              boundingFront.Xmax + dX + (boundingLeft.Xmax - boundingLeft.Xmin) + (dX + boundingBack.Xmax - boundingBack.Xmin),
+                                              boundingFront.Ymax + dY + Math.Max((boundingBottom.Ymax - boundingBottom.Ymin), (boundingIsometric.Ymax - boundingIsometric.Ymin)));
+                        double shiftY = -boundingConfig.Ymin + dY;
                         viewFront.Position = new double[] { xBase, yBase + shiftY };
                         viewBack.Position = new double[] { xBase + xBack, yBase + shiftY };
                         viewRight.Position = new double[] { xBase + xRight, yBase + shiftY };
                         viewLeft.Position = new double[] { xBase + xLeft, yBase + shiftY };
                         viewTop.Position = new double[] { xBase, yBase + shiftY + yTop };
                         viewBottom.Position = new double[] { xBase, yBase + shiftY + yBottom };
+                        viewIsometric.Position = new double[] { xBase+ boundingFront.Xmax +2*dX - boundingIsometric.Xmin, yBase + shiftY + yIsometric };
                         swDraw.ActivateView(viewRight.GetName2());
                         #region Добавить надпись.
                         try {

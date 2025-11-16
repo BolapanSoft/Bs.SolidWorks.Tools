@@ -1,6 +1,7 @@
 ﻿using Bs.SolidWorks.Tools.Commands;
 using Bs.SolidWorks.Tools.Logging;
 using SolidWorks.Interop.sldworks;
+using SolidWorks.Interop.swconst;
 using System;
 using System.IO;
 
@@ -52,10 +53,29 @@ namespace Bs.SolidWorks.Tools {
                 swApp.Visible = false;
                 logger.Info("✅ Подключено к SolidWorks " + swApp.RevisionNumber());
                 logger.Info("Запуск извлечения конфигураций...");
-                // Логика извлечения конфигураций
-                var job=new ExtractConfigurationsJob(swApp, logger);
-                job.ExtractAll(currentDirectory);
-                logger.Info("Извлечение конфигураций завершено успешно.");
+                // Сохраняем текущие настройки, чтобы восстановить их позже
+                int oldNoScale = swApp.GetUserPreferenceIntegerValue(
+                    (int)swUserPreferenceIntegerValue_e.swDxfOutputNoScale);
+                double oldScaleFactor = swApp.GetUserPreferenceDoubleValue(
+                    (int)swUserPreferenceDoubleValue_e.swDxfOutputScaleFactor);
+                try {
+                    // Установить вывод 1:1 (no-scale = 1) и явный коэффициент 1.0
+                    swApp.SetUserPreferenceIntegerValue(
+                        (int)swUserPreferenceIntegerValue_e.swDxfOutputNoScale, 1);
+                    swApp.SetUserPreferenceDoubleValue(
+                        (int)swUserPreferenceDoubleValue_e.swDxfOutputScaleFactor, 1.0);
+                    // Логика извлечения конфигураций
+                    var job = new ExtractConfigurationsJob(swApp, logger);
+                    job.ExtractAll(currentDirectory);
+                    logger.Info("Извлечение конфигураций завершено успешно.");
+                }
+                finally {
+                    // Восстановить прежние настройки пользователя
+                    swApp.SetUserPreferenceIntegerValue(
+                        (int)swUserPreferenceIntegerValue_e.swDxfOutputNoScale, oldNoScale);
+                    swApp.SetUserPreferenceDoubleValue(
+                        (int)swUserPreferenceDoubleValue_e.swDxfOutputScaleFactor, oldScaleFactor);
+                }
             }
             catch (Exception ex) {
                 logger.Error("Ошибка при извлечении конфигураций: " + ex.Message);
